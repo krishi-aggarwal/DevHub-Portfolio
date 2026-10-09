@@ -23,4 +23,4 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(Map.of("status", 400, "error", "Validation failed", "fields", fields));
     }
-}
+}git switch -c feature/frontend

@@ -37,4 +37,4 @@ node_modules/
 .env
 .env.*
 *.local
-application.yaml
+
