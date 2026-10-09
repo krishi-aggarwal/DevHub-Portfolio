@@ -23,4 +23,9 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(Map.of("status", 400, "error", "Validation failed", "fields", fields));
     }
-}git switch -c feature/frontend
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String, Object>> conflict(ConflictException e) {
+        return ResponseEntity.status(409).body(Map.of("status", 409, "error", e.getMessage()));
+    }
+}

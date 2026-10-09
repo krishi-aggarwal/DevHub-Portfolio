@@ -12,6 +12,10 @@ management:
         web:
             exposure:
                 include: health
+            # ADD THIS CORS CONFIGURATION BLOCK
+            cors:
+                allowed-origins: ${ALLOWED_ORIGIN:http://localhost:5173}
+                allowed-methods: GET
 
 app:
     cors:
