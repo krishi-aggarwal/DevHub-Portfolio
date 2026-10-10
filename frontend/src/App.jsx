@@ -3,13 +3,20 @@ import { useEffect, useState } from "react";
 const API = import.meta.env.VITE_API_URL;
 const EMPTY = { title: "", description: "", techStack: "", githubUrl: "", liveUrl: "" };
 
+// only http(s) links are allowed (blocks javascript: links)
+const isUrl = (u) => !u || /^https?:\/\/\S+$/i.test(u);
+
 export default function App() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
   const [apiUp, setApiUp] = useState(null);
+
+  const fe = (k) => fieldErrors[k] && <p className="field-error">{fieldErrors[k]}</p>;
 
   async function load() {
     try {
@@ -19,7 +26,7 @@ export default function App() {
       setProjects(await res.json());
       setError(null);
     } catch (e) {
-      setError(e.message);
+      setError(e.message === "Failed to fetch" ? "Cannot reach the server. It may be waking up, try again in a minute." : e.message);
     } finally {
       setLoading(false);
     }
@@ -43,6 +50,8 @@ export default function App() {
 
   function startEdit(p) {
     setEditingId(p.id);
+    setFieldErrors({});
+    setError(null);
     setForm({
       title: p.title || "",
       description: p.description || "",
@@ -57,6 +66,7 @@ export default function App() {
     setEditingId(null);
     setForm(EMPTY);
     setError(null);
+    setFieldErrors({});
   }
 
   async function submit(e) {
@@ -65,7 +75,21 @@ export default function App() {
       ...form,
       techStack: form.techStack.split(",").map((t) => t.trim()).filter(Boolean),
     };
+
+    // quick client-side check (convenience only, the server is the real gate)
+    const local = {};
+    if (!body.title.trim()) local.title = "Title is required";
+    if (!body.description.trim()) local.description = "Description is required";
+    if (!isUrl(body.githubUrl.trim())) local.githubUrl = "Must start with http:// or https://";
+    if (!isUrl(body.liveUrl.trim())) local.liveUrl = "Must start with http:// or https://";
+    if (Object.keys(local).length) {
+      setFieldErrors(local);
+      setError(null);
+      return;
+    }
+
     const url = editingId ? `${API}/api/projects/${editingId}` : `${API}/api/projects`;
+    setSaving(true);
     try {
       const res = await fetch(url, {
         method: editingId ? "PUT" : "POST",
@@ -73,14 +97,19 @@ export default function App() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const data = await res.json();
-        const details = data.fields ? Object.values(data.fields).join(", ") : data.error;
-        throw new Error(details || "Request failed");
+        const data = await res.json().catch(() => ({}));
+        const errs = {};
+        for (const [k, v] of Object.entries(data.fields || {})) errs[k.split("[")[0]] = v;
+        setFieldErrors(errs);
+        setError(data.fields ? "Please fix the highlighted fields" : data.error || "Request failed");
+        return;
       }
       cancelEdit();
       load();
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      setError("Cannot reach the server. Is the API running?");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -105,25 +134,42 @@ export default function App() {
         <span className={`badge ${status}`}>● API {status}</span>
       </header>
 
-      <form className="card form" onSubmit={submit}>
+      <form className="card form" onSubmit={submit} noValidate>
         <h2>{editingId ? "Edit project" : "Add a project"}</h2>
-        <input placeholder="Title" value={form.title} onChange={change("title")} />
-        <textarea placeholder="Description" rows={3} value={form.description} onChange={change("description")} />
-        <input placeholder="Tech stack (comma separated)" value={form.techStack} onChange={change("techStack")} />
+
+        <input placeholder="Title" maxLength={100} value={form.title} onChange={change("title")} />
+        {fe("title")}
+
+        <textarea placeholder="Description" rows={3} maxLength={1000} value={form.description} onChange={change("description")} />
+        {fe("description")}
+
+        <input placeholder="Tech stack (comma separated, max 10)" value={form.techStack} onChange={change("techStack")} />
+        {fe("techStack")}
+
         <div className="row">
-          <input placeholder="GitHub URL" value={form.githubUrl} onChange={change("githubUrl")} />
-          <input placeholder="Live URL" value={form.liveUrl} onChange={change("liveUrl")} />
+          <div>
+            <input placeholder="GitHub URL" maxLength={300} value={form.githubUrl} onChange={change("githubUrl")} />
+            {fe("githubUrl")}
+          </div>
+          <div>
+            <input placeholder="Live URL" maxLength={300} value={form.liveUrl} onChange={change("liveUrl")} />
+            {fe("liveUrl")}
+          </div>
         </div>
+
         {error && <p className="error">{error}</p>}
+
         <div className="row">
-          <button className="btn primary">{editingId ? "Save changes" : "Add project"}</button>
+          <button className="btn primary" disabled={saving}>
+            {saving ? "Saving..." : editingId ? "Save changes" : "Add project"}
+          </button>
           {editingId && (
             <button type="button" className="btn ghost" onClick={cancelEdit}>Cancel</button>
           )}
         </div>
       </form>
 
-      {loading && <p className="muted">Loading...</p>}
+      {loading && <p className="muted">Loading... (a sleeping free server can take about a minute to wake up)</p>}
       {!loading && projects.length === 0 && !error && (
         <p className="muted">No projects yet. Add your first one above.</p>
       )}
@@ -137,8 +183,12 @@ export default function App() {
               {(p.techStack || []).map((t) => <span key={t} className="tag">{t}</span>)}
             </div>
             <div className="links">
-              {p.githubUrl && <a href={p.githubUrl} target="_blank" rel="noopener noreferrer">GitHub ↗</a>}
-              {p.liveUrl && <a href={p.liveUrl} target="_blank" rel="noopener noreferrer">Live ↗</a>}
+              {p.githubUrl && isUrl(p.githubUrl) && (
+                <a href={p.githubUrl} target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+              )}
+              {p.liveUrl && isUrl(p.liveUrl) && (
+                <a href={p.liveUrl} target="_blank" rel="noopener noreferrer">Live ↗</a>
+              )}
             </div>
             <div className="actions">
               <button className="btn small" onClick={() => startEdit(p)}>Edit</button>
