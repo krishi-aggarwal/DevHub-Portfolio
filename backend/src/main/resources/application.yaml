@@ -20,3 +20,4 @@ management:
 app:
     cors:
         allowed-origin: ${ALLOWED_ORIGIN:http://localhost:5173}
+    admin-key: ${ADMIN_KEY:}

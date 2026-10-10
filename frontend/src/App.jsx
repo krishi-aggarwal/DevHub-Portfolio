@@ -15,8 +15,23 @@ export default function App() {
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
   const [apiUp, setApiUp] = useState(null);
+  const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem("adminKey") || "");
+const isAdmin = Boolean(adminKey);
 
   const fe = (k) => fieldErrors[k] && <p className="field-error">{fieldErrors[k]}</p>;
+
+
+  function unlock() {
+  const k = window.prompt("Admin key");
+  if (k) { sessionStorage.setItem("adminKey", k); setAdminKey(k); }
+}
+
+function lock() {
+  sessionStorage.removeItem("adminKey");
+  setAdminKey("");
+  cancelEdit();
+}
+
 
   async function load() {
     try {
